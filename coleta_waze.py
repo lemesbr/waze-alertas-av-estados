@@ -12,7 +12,8 @@ import time
 import random
 from datetime import datetime
 
-ARQUIVO_SAIDA = "dados/alertas_waze.csv"
+SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
+ARQUIVO_SAIDA = os.path.join(SCRIPT_DIR, "dados", "alertas_waze.csv")
 
 # ── Bounding Box: Av. dos Estados (Ligação Leste-Oeste → Anhaia Mello) ──
 BOTTOM_LAT = -23.5700
@@ -64,12 +65,9 @@ def fetch_waze_direct():
         "types": "alerts",
     }
 
-    # Endpoints ordenados por taxa de sucesso em ambientes cloud
     endpoints = [
-        # Endpoint de embed — menos restrito
         "https://embed.waze.com/row-Ede3-api/georss",
         "https://embed.waze.com/georss",
-        # Endpoints regionais padrão
         "https://www.waze.com/row-Ede3-api/georss",
         "https://www.waze.com/row-rtserver/web/TGeoRSS",
         "https://www.waze.com/rtserver/web/TGeoRSS",
@@ -78,7 +76,6 @@ def fetch_waze_direct():
 
     session = requests.Session()
 
-    # Simula visita inicial ao embed para obter cookies
     try:
         session.get(
             "https://embed.waze.com/",
@@ -104,12 +101,15 @@ def fetch_waze_direct():
                     print(f"  Endpoint OK: {endpoint.split('/')[-3] if '/' in endpoint else endpoint}")
                     return alertas
                 except Exception:
+                    print(f"  Sem JSON ({endpoint.split('/')[-3]}): {resp.text[:80]}")
                     continue
             elif resp.status_code == 403:
                 print(f"  Bloqueado (403): {endpoint.split('/')[-3]}")
             elif resp.status_code == 429:
                 print(f"  Rate limit (429): aguardando...")
                 time.sleep(random.uniform(5, 10))
+            else:
+                print(f"  HTTP {resp.status_code}: {endpoint.split('/')[-3]}")
         except requests.exceptions.Timeout:
             print(f"  Timeout: {endpoint.split('/')[-3]}")
         except Exception as e:
@@ -169,7 +169,7 @@ def processar_alertas(alertas_brutos):
 
 def salvar_incremental(novos_alertas):
     """Adiciona alertas ao CSV, evitando duplicatas."""
-    os.makedirs("dados", exist_ok=True)
+    os.makedirs(os.path.dirname(ARQUIVO_SAIDA), exist_ok=True)
     df_novo = pd.DataFrame(novos_alertas)
 
     if len(df_novo) == 0:
