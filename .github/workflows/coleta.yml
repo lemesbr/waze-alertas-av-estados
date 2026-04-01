@@ -43,5 +43,5 @@ jobs:
           
           # A MÁGICA ESTÁ AQUI: Puxa as novidades e coloca o seu novo dado no topo
           git pull --rebase origin main
-          
+
           git push
