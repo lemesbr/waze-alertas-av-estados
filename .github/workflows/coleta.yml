@@ -2,11 +2,13 @@ name: Coleta Waze - Av. dos Estados
 
 on:
   schedule:
+    # A cada 5 min, das 22h às 03h UTC (19h-00h Brasília), seg a sex
     - cron: '*/5 22-23 * * 1-5'
     - cron: '*/5 0-3 * * 2-6'
+    # Fim de semana também
     - cron: '*/5 22-23 * * 0,6'
     - cron: '*/5 0-3 * * 0,6'
-  workflow_dispatch:
+  workflow_dispatch:  # Rodar manualmente
 
 jobs:
   coletar:
@@ -15,7 +17,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repositorio
+      - name: Checkout repositório
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -23,10 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar dependencias
+      - name: Instalar dependências
         run: pip install requests pandas
 
       - name: Executar coleta
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: python coleta_waze.py
 
       - name: Commit dados
