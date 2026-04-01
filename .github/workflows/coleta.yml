@@ -34,9 +34,14 @@ jobs:
         run: python coleta_waze.py
 
       - name: Commit dados
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add dados/
+          # Só faz o commit se houver mudanças reais
           git diff --staged --quiet || git commit -m "coleta $(date -u +'%Y-%m-%d %H:%M UTC')"
+          
+          # A MÁGICA ESTÁ AQUI: Puxa as novidades e coloca o seu novo dado no topo
+          git pull --rebase origin main
+          
           git push
