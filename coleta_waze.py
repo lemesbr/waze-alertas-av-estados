@@ -53,7 +53,7 @@ def get_headers():
 def fetch_waze_via_scraperapi():
     """
     Busca alertas roteando via ScraperAPI (IP residencial rotativo).
-    Usa proxy mode para manter headers e lógica normais.
+    Tenta múltiplos endpoints — via proxy, o IP é residencial e o Waze não bloqueia.
     """
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -67,25 +67,36 @@ def fetch_waze_via_scraperapi():
         "left":   LEFT_LON,   "right": RIGHT_LON,
         "ma": 200, "mj": 100, "mu": 100, "types": "alerts",
     }
-    endpoint = "https://embed.waze.com/row-Ede3-api/georss"
-    try:
-        resp = requests.get(
-            endpoint,
-            params=params,
-            headers=get_headers(),
-            proxies=proxies,
-            verify=False,
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            alertas = data.get("alerts", [])
-            print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
-            return alertas
-        else:
-            print(f"  ScraperAPI HTTP {resp.status_code}: {resp.text[:120]}")
-    except Exception as e:
-        print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
+    # Via proxy residencial, os endpoints www.waze.com funcionam normalmente
+    endpoints = [
+        "https://www.waze.com/row-Ede3-api/georss",
+        "https://www.waze.com/row-rtserver/web/TGeoRSS",
+        "https://www.waze.com/rtserver/web/TGeoRSS",
+        "https://www.waze.com/live-map/api/georss",
+    ]
+    for endpoint in endpoints:
+        try:
+            resp = requests.get(
+                endpoint,
+                params=params,
+                headers=get_headers(),
+                proxies=proxies,
+                verify=False,
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    alertas = data.get("alerts", [])
+                    print(f"  ScraperAPI OK ({endpoint.split('/')[-3]}): {len(alertas)} alertas brutos")
+                    return alertas
+                except Exception:
+                    print(f"  ScraperAPI sem JSON ({endpoint.split('/')[-3]}): {resp.text[:80]}")
+                    continue
+            else:
+                print(f"  ScraperAPI HTTP {resp.status_code} ({endpoint.split('/')[-3]})")
+        except Exception as e:
+            print(f"  ScraperAPI erro ({endpoint.split('/')[-3]}): {type(e).__name__}: {e}")
     return []
 
 
