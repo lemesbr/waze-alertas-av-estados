@@ -12,8 +12,9 @@ import time
 import random
 from datetime import datetime
 
-SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
-ARQUIVO_SAIDA = os.path.join(SCRIPT_DIR, "dados", "alertas_waze.csv")
+SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
+ARQUIVO_SAIDA   = os.path.join(SCRIPT_DIR, "dados", "alertas_waze.csv")
+SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "")
 
 # ── Bounding Box: Av. dos Estados (Ligação Leste-Oeste → Anhaia Mello) ──
 BOTTOM_LAT = -23.5700
@@ -49,22 +50,54 @@ def get_headers():
     }
 
 
+def fetch_waze_via_scraperapi():
+    """
+    Busca alertas roteando via ScraperAPI (IP residencial rotativo).
+    Usa proxy mode para manter headers e lógica normais.
+    """
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    proxies = {
+        "http":  f"http://scraperapi:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001",
+        "https": f"http://scraperapi:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001",
+    }
+    params = {
+        "bottom": BOTTOM_LAT, "top": TOP_LAT,
+        "left":   LEFT_LON,   "right": RIGHT_LON,
+        "ma": 200, "mj": 100, "mu": 100, "types": "alerts",
+    }
+    endpoint = "https://embed.waze.com/row-Ede3-api/georss"
+    try:
+        resp = requests.get(
+            endpoint,
+            params=params,
+            headers=get_headers(),
+            proxies=proxies,
+            verify=False,
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            alertas = data.get("alerts", [])
+            print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
+            return alertas
+        else:
+            print(f"  ScraperAPI HTTP {resp.status_code}: {resp.text[:120]}")
+    except Exception as e:
+        print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
+    return []
+
+
 def fetch_waze_direct():
     """
-    Busca alertas via endpoint público do Waze.
-    Tenta múltiplos endpoints na ordem de menor restrição.
+    Busca alertas diretamente — funciona em IP residencial, bloqueado em cloud.
     """
     params = {
-        "bottom": BOTTOM_LAT,
-        "top": TOP_LAT,
-        "left": LEFT_LON,
-        "right": RIGHT_LON,
-        "ma": 200,
-        "mj": 100,
-        "mu": 100,
-        "types": "alerts",
+        "bottom": BOTTOM_LAT, "top": TOP_LAT,
+        "left":   LEFT_LON,   "right": RIGHT_LON,
+        "ma": 200, "mj": 100, "mu": 100, "types": "alerts",
     }
-
     endpoints = [
         "https://embed.waze.com/row-Ede3-api/georss",
         "https://embed.waze.com/georss",
@@ -73,33 +106,21 @@ def fetch_waze_direct():
         "https://www.waze.com/rtserver/web/TGeoRSS",
         "https://www.waze.com/live-map/api/georss",
     ]
-
     session = requests.Session()
-
     try:
-        session.get(
-            "https://embed.waze.com/",
-            headers=get_headers(),
-            timeout=15,
-        )
+        session.get("https://embed.waze.com/", headers=get_headers(), timeout=15)
         time.sleep(random.uniform(0.5, 1.5))
     except Exception:
         pass
 
     for endpoint in endpoints:
         try:
-            resp = session.get(
-                endpoint,
-                params=params,
-                headers=get_headers(),
-                timeout=30,
-            )
+            resp = session.get(endpoint, params=params, headers=get_headers(), timeout=30)
             if resp.status_code == 200:
                 try:
                     data = resp.json()
-                    alertas = data.get("alerts", [])
-                    print(f"  Endpoint OK: {endpoint.split('/')[-3] if '/' in endpoint else endpoint}")
-                    return alertas
+                    print(f"  Direto OK: {endpoint.split('/')[-3]}")
+                    return data.get("alerts", [])
                 except Exception:
                     print(f"  Sem JSON ({endpoint.split('/')[-3]}): {resp.text[:80]}")
                     continue
@@ -118,6 +139,15 @@ def fetch_waze_direct():
 
     print("  AVISO: Nenhum endpoint respondeu com dados.")
     return []
+
+
+def fetch_alertas():
+    """Escolhe automaticamente o método de coleta disponível."""
+    if SCRAPER_API_KEY:
+        print("  Modo: ScraperAPI (proxy residencial)")
+        return fetch_waze_via_scraperapi()
+    print("  Modo: direto (requer IP residencial)")
+    return fetch_waze_direct()
 
 
 def classificar_sentido(lon):
@@ -147,21 +177,21 @@ def processar_alertas(alertas_brutos):
             continue
 
         resultados.append({
-            "alert_id":      str(a.get("uuid", a.get("id", a.get("alert_id", "")))),
-            "coleta_utc":    agora.strftime("%Y-%m-%d %H:%M:%S"),
-            "data":          agora.strftime("%Y-%m-%d"),
-            "hora_utc":      agora.strftime("%H:%M"),
-            "hora_brt":      (agora.replace(hour=(agora.hour - 3) % 24)).strftime("%H:%M"),
-            "dia_semana":    agora.strftime("%A"),
-            "latitude":      lat,
-            "longitude":     lon,
-            "tipo":          tipo,
-            "subtipo":       a.get("subtype", ""),
-            "sentido_via":   classificar_sentido(lon),
+            "alert_id":       str(a.get("uuid", a.get("id", a.get("alert_id", "")))),
+            "coleta_utc":     agora.strftime("%Y-%m-%d %H:%M:%S"),
+            "data":           agora.strftime("%Y-%m-%d"),
+            "hora_utc":       agora.strftime("%H:%M"),
+            "hora_brt":       (agora.replace(hour=(agora.hour - 3) % 24)).strftime("%H:%M"),
+            "dia_semana":     agora.strftime("%A"),
+            "latitude":       lat,
+            "longitude":      lon,
+            "tipo":           tipo,
+            "subtipo":        a.get("subtype", ""),
+            "sentido_via":    classificar_sentido(lon),
             "confiabilidade": a.get("reliability", a.get("alert_reliability", 0)),
-            "thumbs_up":     a.get("nThumbsUp", a.get("num_thumbs_up", 0)),
-            "rua":           a.get("street", a.get("roadType", "")),
-            "descricao":     a.get("reportDescription", a.get("description", "")),
+            "thumbs_up":      a.get("nThumbsUp", a.get("num_thumbs_up", 0)),
+            "rua":            a.get("street", a.get("roadType", "")),
+            "descricao":      a.get("reportDescription", a.get("description", "")),
         })
 
     return resultados
@@ -188,13 +218,13 @@ def salvar_incremental(novos_alertas):
 
 
 def main():
-    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M:%S UTC}] Buscando alertas Waze (direto)...")
+    print(f"[{datetime.utcnow():%Y-%m-%d %H:%M:%S UTC}] Buscando alertas Waze...")
 
     delay = random.uniform(1, 5)
     time.sleep(delay)
 
     try:
-        brutos = fetch_waze_direct()
+        brutos = fetch_alertas()
         processados = processar_alertas(brutos)
         novos = salvar_incremental(processados)
         print(f"  Brutos: {len(brutos)} | Relevantes: {len(processados)} | Novos: {novos}")
