@@ -34,7 +34,7 @@ jobs:
         run: python coleta_waze.py
 
       - name: Commit dados
-          run: |
+        run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add dados/
