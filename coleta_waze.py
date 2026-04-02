@@ -64,8 +64,9 @@ def fetch_waze_via_scraperapi():
         "ma": 200, "mj": 100, "mu": 100, "types": "alerts",
     }
 
-    # Tenta 2 endpoints para não desperdiçar créditos do free tier
+    # Tenta endpoints em ordem — embed.waze.com funciona com IP residencial
     endpoints = [
+        "https://embed.waze.com/row-Ede3-api/georss",
         "https://www.waze.com/row-Ede3-api/georss",
         "https://www.waze.com/live-map/api/georss",
     ]
