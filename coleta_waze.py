@@ -52,12 +52,14 @@ def get_headers():
 
 def fetch_waze_via_scraperapi():
     """
-    Busca alertas via ScraperAPI API mode com sessão persistente:
-    1. Warm-up: carrega a iframe do Waze (define cookies na sessão ScraperAPI)
-    2. Coleta: faz o request ao georss com a mesma sessão (cookie + Referer/Origin)
-    Waze exige cookie de sessão + Referer/Origin corretos para não retornar 403.
+    Busca alertas via ScraperAPI PROXY mode com sessão persistente.
+    Proxy mode passa nossos headers (Referer, Origin) diretamente ao Waze.
+    API mode com keep_headers retorna "Protected" — ScraperAPI bloqueia o endpoint.
+    1. Warm-up: carrega a iframe (define cookies na sessão ScraperAPI)
+    2. Coleta: requisição ao georss com a mesma sessão (cookies + Referer/Origin)
     """
-    import urllib.parse
+    import urllib.parse, urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     session_id = random.randint(1, 9999)
     lat_c = (TOP_LAT + BOTTOM_LAT) / 2
@@ -66,33 +68,31 @@ def fetch_waze_via_scraperapi():
         f"https://embed.waze.com/iframe?zoom=14&lat={lat_c}&lon={lon_c}"
         "&ct=livemap&types=alerts"
     )
-    base_params = {
-        "api_key":        SCRAPER_API_KEY,
-        "keep_headers":   "true",
-        "country_code":   "br",
-        "session_number": str(session_id),
-        "render":         "false",
-    }
+    proxy_url = (
+        f"http://scraperapi.session_number={session_id}"
+        f".country_code=br:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001"
+    )
+    proxies = {"http": proxy_url, "https": proxy_url}
 
     # Passo 1: warm-up — carrega iframe para definir cookies na sessão ScraperAPI
     try:
         r0 = requests.get(
-            "https://api.scraperapi.com",
-            params={**base_params, "url": iframe_url},
+            iframe_url,
             headers={
                 "User-Agent":      random.choice(USER_AGENTS),
                 "Accept":          "text/html,application/xhtml+xml,*/*;q=0.8",
                 "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+                "Cache-Control":   "no-cache",
             },
-            timeout=60,
+            proxies=proxies, verify=False, timeout=60,
         )
         print(f"  Warm-up HTTP {r0.status_code} (sessão {session_id})")
     except Exception as e:
         print(f"  Warm-up erro: {type(e).__name__}: {e}")
 
-    time.sleep(random.uniform(1.5, 3.0))
+    time.sleep(random.uniform(2.0, 4.0))
 
-    # Passo 2: requisição ao georss com a mesma sessão (inclui cookies do warm-up)
+    # Passo 2: requisição ao endpoint georss com a mesma sessão (inclui cookies)
     waze_params = {
         "top":    TOP_LAT,    "bottom": BOTTOM_LAT,
         "left":   LEFT_LON,   "right":  RIGHT_LON,
@@ -104,8 +104,7 @@ def fetch_waze_via_scraperapi():
     )
     try:
         resp = requests.get(
-            "https://api.scraperapi.com",
-            params={**base_params, "url": target_url},
+            target_url,
             headers={
                 "User-Agent":       random.choice(USER_AGENTS),
                 "Accept":           "application/json, text/javascript, */*; q=0.01",
@@ -114,8 +113,10 @@ def fetch_waze_via_scraperapi():
                 "Origin":           "https://embed.waze.com",
                 "X-Requested-With": "XMLHttpRequest",
                 "Cache-Control":    "no-cache",
+                "Sec-Fetch-Mode":   "cors",
+                "Sec-Fetch-Site":   "same-origin",
             },
-            timeout=70,
+            proxies=proxies, verify=False, timeout=70,
         )
         print(f"  ScraperAPI coleta HTTP {resp.status_code}")
         if resp.status_code == 200:
