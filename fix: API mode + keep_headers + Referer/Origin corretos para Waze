@@ -52,58 +52,53 @@ def get_headers():
 
 def fetch_waze_via_scraperapi():
     """
-    Busca alertas via ScraperAPI proxy mode com session_number fixo.
-    O session_number garante que warm-up e coleta usem o mesmo IP residencial.
-    Endpoint real descoberto via DevTools: embed.waze.com/live-map/api/georss
+    Busca alertas via ScraperAPI API mode com keep_headers=true.
+    Referer e Origin corretos são essenciais — Waze retorna 403 sem eles.
+    Endpoint real: embed.waze.com/live-map/api/georss (descoberto via DevTools).
     """
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    import urllib.parse
 
-    session_num = random.randint(1, 9999)
-    proxy_url = (
-        f"http://scraperapi.session_number={session_num}"
-        f":{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001"
-    )
-    proxies = {"http": proxy_url, "https": proxy_url}
-
-    lat_centro = (TOP_LAT + BOTTOM_LAT) / 2
-    lon_centro = (LEFT_LON + RIGHT_LON) / 2
-
-    session = requests.Session()
-
-    # Warm-up: visita o embed para obter cookie de sessão no mesmo IP residencial
-    try:
-        r = session.get(
-            "https://embed.waze.com/iframe",
-            params={"zoom": 14, "lat": lat_centro, "lon": lon_centro,
-                    "ct": "livemap", "types": "alerts"},
-            headers=get_headers(),
-            proxies=proxies,
-            verify=False,
-            timeout=30,
-        )
-        print(f"  ScraperAPI warm-up: HTTP {r.status_code}")
-        time.sleep(random.uniform(1, 2))
-    except Exception as e:
-        print(f"  ScraperAPI warm-up erro: {type(e).__name__}")
-
-    # Coleta com o endpoint real descoberto via DevTools
-    params = {
+    waze_params = {
         "top":    TOP_LAT,    "bottom": BOTTOM_LAT,
         "left":   LEFT_LON,   "right":  RIGHT_LON,
         "env":    "row",      "types":  "alerts,traffic,users",
     }
-    endpoint = "https://embed.waze.com/live-map/api/georss"
+    target_url = (
+        "https://embed.waze.com/live-map/api/georss?"
+        + urllib.parse.urlencode(waze_params)
+    )
+
+    # Referer e Origin devem apontar para o iframe do Waze (verificado via DevTools)
+    lat_c = (TOP_LAT + BOTTOM_LAT) / 2
+    lon_c = (LEFT_LON + RIGHT_LON) / 2
+    referer = (
+        f"https://embed.waze.com/iframe?zoom=14&lat={lat_c}&lon={lon_c}"
+        "&ct=livemap&types=alerts"
+    )
+    headers = {
+        "User-Agent":        random.choice(USER_AGENTS),
+        "Accept":            "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language":   "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer":           referer,
+        "Origin":            "https://embed.waze.com",
+        "X-Requested-With":  "XMLHttpRequest",
+        "Cache-Control":     "no-cache",
+    }
+
     try:
-        resp = session.get(
-            endpoint,
-            params=params,
-            headers=get_headers(),
-            proxies=proxies,
-            verify=False,
-            timeout=60,
+        resp = requests.get(
+            "https://api.scraperapi.com",
+            params={
+                "api_key":      SCRAPER_API_KEY,
+                "url":          target_url,
+                "render":       "false",
+                "keep_headers": "true",
+                "country_code": "br",
+            },
+            headers=headers,
+            timeout=70,
         )
-        print(f"  ScraperAPI coleta HTTP {resp.status_code}")
+        print(f"  ScraperAPI HTTP {resp.status_code}")
         if resp.status_code == 200:
             try:
                 data = resp.json()
@@ -111,9 +106,9 @@ def fetch_waze_via_scraperapi():
                 print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
                 return alertas
             except Exception:
-                print(f"  ScraperAPI sem JSON: {resp.text[:120]}")
+                print(f"  ScraperAPI sem JSON: {resp.text[:150]}")
         else:
-            print(f"  ScraperAPI HTTP {resp.status_code}: {resp.text[:80]}")
+            print(f"  ScraperAPI HTTP {resp.status_code}: {resp.text[:100]}")
     except Exception as e:
         print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
 
