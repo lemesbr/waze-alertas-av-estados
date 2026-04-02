@@ -52,12 +52,47 @@ def get_headers():
 
 def fetch_waze_via_scraperapi():
     """
-    Busca alertas via ScraperAPI API mode com keep_headers=true.
-    Referer e Origin corretos são essenciais — Waze retorna 403 sem eles.
-    Endpoint real: embed.waze.com/live-map/api/georss (descoberto via DevTools).
+    Busca alertas via ScraperAPI API mode com sessão persistente:
+    1. Warm-up: carrega a iframe do Waze (define cookies na sessão ScraperAPI)
+    2. Coleta: faz o request ao georss com a mesma sessão (cookie + Referer/Origin)
+    Waze exige cookie de sessão + Referer/Origin corretos para não retornar 403.
     """
     import urllib.parse
 
+    session_id = random.randint(1, 9999)
+    lat_c = (TOP_LAT + BOTTOM_LAT) / 2
+    lon_c = (LEFT_LON + RIGHT_LON) / 2
+    iframe_url = (
+        f"https://embed.waze.com/iframe?zoom=14&lat={lat_c}&lon={lon_c}"
+        "&ct=livemap&types=alerts"
+    )
+    base_params = {
+        "api_key":        SCRAPER_API_KEY,
+        "keep_headers":   "true",
+        "country_code":   "br",
+        "session_number": str(session_id),
+        "render":         "false",
+    }
+
+    # Passo 1: warm-up — carrega iframe para definir cookies na sessão ScraperAPI
+    try:
+        r0 = requests.get(
+            "https://api.scraperapi.com",
+            params={**base_params, "url": iframe_url},
+            headers={
+                "User-Agent":      random.choice(USER_AGENTS),
+                "Accept":          "text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+            },
+            timeout=60,
+        )
+        print(f"  Warm-up HTTP {r0.status_code} (sessão {session_id})")
+    except Exception as e:
+        print(f"  Warm-up erro: {type(e).__name__}: {e}")
+
+    time.sleep(random.uniform(1.5, 3.0))
+
+    # Passo 2: requisição ao georss com a mesma sessão (inclui cookies do warm-up)
     waze_params = {
         "top":    TOP_LAT,    "bottom": BOTTOM_LAT,
         "left":   LEFT_LON,   "right":  RIGHT_LON,
@@ -67,38 +102,22 @@ def fetch_waze_via_scraperapi():
         "https://embed.waze.com/live-map/api/georss?"
         + urllib.parse.urlencode(waze_params)
     )
-
-    # Referer e Origin devem apontar para o iframe do Waze (verificado via DevTools)
-    lat_c = (TOP_LAT + BOTTOM_LAT) / 2
-    lon_c = (LEFT_LON + RIGHT_LON) / 2
-    referer = (
-        f"https://embed.waze.com/iframe?zoom=14&lat={lat_c}&lon={lon_c}"
-        "&ct=livemap&types=alerts"
-    )
-    headers = {
-        "User-Agent":        random.choice(USER_AGENTS),
-        "Accept":            "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language":   "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer":           referer,
-        "Origin":            "https://embed.waze.com",
-        "X-Requested-With":  "XMLHttpRequest",
-        "Cache-Control":     "no-cache",
-    }
-
     try:
         resp = requests.get(
             "https://api.scraperapi.com",
-            params={
-                "api_key":      SCRAPER_API_KEY,
-                "url":          target_url,
-                "render":       "false",
-                "keep_headers": "true",
-                "country_code": "br",
+            params={**base_params, "url": target_url},
+            headers={
+                "User-Agent":       random.choice(USER_AGENTS),
+                "Accept":           "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language":  "pt-BR,pt;q=0.9,en-US;q=0.8",
+                "Referer":          iframe_url,
+                "Origin":           "https://embed.waze.com",
+                "X-Requested-With": "XMLHttpRequest",
+                "Cache-Control":    "no-cache",
             },
-            headers=headers,
             timeout=70,
         )
-        print(f"  ScraperAPI HTTP {resp.status_code}")
+        print(f"  ScraperAPI coleta HTTP {resp.status_code}")
         if resp.status_code == 200:
             try:
                 data = resp.json()
@@ -108,11 +127,12 @@ def fetch_waze_via_scraperapi():
             except Exception:
                 print(f"  ScraperAPI sem JSON: {resp.text[:150]}")
         else:
-            print(f"  ScraperAPI HTTP {resp.status_code}: {resp.text[:100]}")
+            print(f"  ScraperAPI erro: {resp.text[:120]}")
     except Exception as e:
         print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
 
     return []
+
 
 def fetch_waze_direct():
     """
