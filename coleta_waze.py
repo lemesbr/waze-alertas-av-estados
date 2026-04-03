@@ -39,86 +39,74 @@ USER_AGENTS = [
 
 def fetch_waze_via_scraperapi():
     """
-    Busca alertas via ScraperAPI PROXY mode com sessão persistente.
-    Usa requests.Session() para carregar cookies do warm-up automaticamente.
-    1. Warm-up: carrega iframe (obtém cookies Waze na sessão requests)
-    2. Coleta: georss com mesma sessão (envia cookies automaticamente)
+    Busca alertas via ScraperAPI API mode com premium=true e keep_headers=true.
+    premium=true: pipeline Anti-Bot-Protection da ScraperAPI (Cloudflare bypass)
+    keep_headers=true: repassa nossos headers (Referer, Origin) ao Waze
+    Estratégia: tenta premium, depois ultra_premium se necessário.
     """
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    import urllib.parse
 
-    session_id = random.randint(1, 9999)
     lat_c = (TOP_LAT + BOTTOM_LAT) / 2
     lon_c = (LEFT_LON + RIGHT_LON) / 2
     iframe_url = (
         f"https://embed.waze.com/iframe?zoom=14&lat={lat_c}&lon={lon_c}"
         "&ct=livemap&types=alerts"
     )
-    proxy_url = (
-        f"http://scraperapi.premium=true.session_number={session_id}"
-        f".country_code=br:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001"
-    )
-    proxies = {"http": proxy_url, "https": proxy_url}
-
-    # Session persiste cookies entre requisições automaticamente
-    sess = requests.Session()
-
-    # Passo 1: warm-up — carrega iframe para obter cookies Waze
-    try:
-        r0 = sess.get(
-            iframe_url,
-            headers={
-                "User-Agent":      random.choice(USER_AGENTS),
-                "Accept":          "text/html,application/xhtml+xml,*/*;q=0.8",
-                "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
-                "Cache-Control":   "no-cache",
-            },
-            proxies=proxies, verify=False, timeout=60,
-        )
-        cookies_obtidos = list(sess.cookies.keys())
-        print(f"  Warm-up HTTP {r0.status_code} (sessão {session_id})")
-        print(f"  Cookies: {cookies_obtidos if cookies_obtidos else 'nenhum'}")
-    except Exception as e:
-        print(f"  Warm-up erro: {type(e).__name__}: {e}")
-
-    time.sleep(random.uniform(2.0, 4.0))
-
-    # Passo 2: georss com mesma sessão (cookies incluídos automaticamente)
     waze_params = {
         "top":    TOP_LAT,    "bottom": BOTTOM_LAT,
         "left":   LEFT_LON,   "right":  RIGHT_LON,
         "env":    "row",      "types":  "alerts,traffic,users",
     }
-    try:
-        resp = sess.get(
-            "https://embed.waze.com/live-map/api/georss",
-            params=waze_params,
-            headers={
-                "User-Agent":       random.choice(USER_AGENTS),
-                "Accept":           "application/json, text/javascript, */*; q=0.01",
-                "Accept-Language":  "pt-BR,pt;q=0.9,en-US;q=0.8",
-                "Referer":          iframe_url,
-                "Origin":           "https://embed.waze.com",
-                "X-Requested-With": "XMLHttpRequest",
-                "Cache-Control":    "no-cache",
-                "Sec-Fetch-Mode":   "cors",
-                "Sec-Fetch-Site":   "same-origin",
-            },
-            proxies=proxies, verify=False, timeout=70,
-        )
-        print(f"  ScraperAPI coleta HTTP {resp.status_code}")
-        if resp.status_code == 200:
-            try:
-                data = resp.json()
-                alertas = data.get("alerts", [])
-                print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
-                return alertas
-            except Exception:
-                print(f"  ScraperAPI sem JSON: {resp.text[:200]}")
-        else:
-            print(f"  ScraperAPI resp: {resp.text[:200]}")
-    except Exception as e:
-        print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
+    target_url = (
+        "https://embed.waze.com/live-map/api/georss?"
+        + urllib.parse.urlencode(waze_params)
+    )
+
+    # Headers que o browser envia ao Waze (repassa via keep_headers=true)
+    waze_headers = {
+        "User-Agent":       random.choice(USER_AGENTS),
+        "Accept":           "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language":  "pt-BR,pt;q=0.9,en-US;q=0.8",
+        "Referer":          iframe_url,
+        "Origin":           "https://embed.waze.com",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cache-Control":    "no-cache",
+        "Sec-Fetch-Mode":   "cors",
+        "Sec-Fetch-Site":   "same-origin",
+    }
+
+    for modo in ["premium", "ultra_premium"]:
+        params = {
+            "api_key":      SCRAPER_API_KEY,
+            "url":          target_url,
+            "keep_headers": "true",
+            "country_code": "br",
+        }
+        params[modo] = "true"
+
+        print(f"  Tentando ScraperAPI API mode ({modo}=true)...")
+        try:
+            resp = requests.get(
+                "https://api.scraperapi.com/",
+                params=params,
+                headers=waze_headers,
+                timeout=120,
+            )
+            print(f"  ScraperAPI {modo} HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    alertas = data.get("alerts", [])
+                    print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
+                    return alertas
+                except Exception:
+                    print(f"  ScraperAPI sem JSON: {resp.text[:200]}")
+            else:
+                print(f"  ScraperAPI resp: {resp.text[:200]}")
+                if "Protected" not in resp.text:
+                    break  # Erro diferente — não tenta ultra
+        except Exception as e:
+            print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
 
     return []
 
@@ -189,7 +177,7 @@ def fetch_waze_direct():
 def fetch_alertas():
     """Escolhe automaticamente o método de coleta disponível."""
     if SCRAPER_API_KEY:
-        print("  Modo: ScraperAPI (proxy residencial)")
+        print("  Modo: ScraperAPI (API mode premium)")
         return fetch_waze_via_scraperapi()
     print("  Modo: direto (requer IP residencial)")
     return fetch_waze_direct()
