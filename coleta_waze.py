@@ -55,7 +55,7 @@ def fetch_waze_via_scraperapi():
         "&ct=livemap&types=alerts"
     )
     proxy_url = (
-        f"http://scraperapi.session_number={session_id}"
+        f"http://scraperapi.premium=true.session_number={session_id}"
         f".country_code=br:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001"
     )
     proxies = {"http": proxy_url, "https": proxy_url}
