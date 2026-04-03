@@ -37,28 +37,14 @@ USER_AGENTS = [
 ]
 
 
-def get_headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://embed.waze.com/",
-        "Origin": "https://embed.waze.com",
-        "Connection": "keep-alive",
-        "Cache-Control": "no-cache",
-    }
-
-
 def fetch_waze_via_scraperapi():
     """
     Busca alertas via ScraperAPI PROXY mode com sessão persistente.
-    Proxy mode passa nossos headers (Referer, Origin) diretamente ao Waze.
-    API mode com keep_headers retorna "Protected" — ScraperAPI bloqueia o endpoint.
-    1. Warm-up: carrega a iframe (define cookies na sessão ScraperAPI)
-    2. Coleta: requisição ao georss com a mesma sessão (cookies + Referer/Origin)
+    Usa requests.Session() para carregar cookies do warm-up automaticamente.
+    1. Warm-up: carrega iframe (obtém cookies Waze na sessão requests)
+    2. Coleta: georss com mesma sessão (envia cookies automaticamente)
     """
-    import urllib.parse, urllib3
+    import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     session_id = random.randint(1, 9999)
@@ -74,9 +60,12 @@ def fetch_waze_via_scraperapi():
     )
     proxies = {"http": proxy_url, "https": proxy_url}
 
-    # Passo 1: warm-up — carrega iframe para definir cookies na sessão ScraperAPI
+    # Session persiste cookies entre requisições automaticamente
+    sess = requests.Session()
+
+    # Passo 1: warm-up — carrega iframe para obter cookies Waze
     try:
-        r0 = requests.get(
+        r0 = sess.get(
             iframe_url,
             headers={
                 "User-Agent":      random.choice(USER_AGENTS),
@@ -86,25 +75,24 @@ def fetch_waze_via_scraperapi():
             },
             proxies=proxies, verify=False, timeout=60,
         )
+        cookies_obtidos = list(sess.cookies.keys())
         print(f"  Warm-up HTTP {r0.status_code} (sessão {session_id})")
+        print(f"  Cookies: {cookies_obtidos if cookies_obtidos else 'nenhum'}")
     except Exception as e:
         print(f"  Warm-up erro: {type(e).__name__}: {e}")
 
     time.sleep(random.uniform(2.0, 4.0))
 
-    # Passo 2: requisição ao endpoint georss com a mesma sessão (inclui cookies)
+    # Passo 2: georss com mesma sessão (cookies incluídos automaticamente)
     waze_params = {
         "top":    TOP_LAT,    "bottom": BOTTOM_LAT,
         "left":   LEFT_LON,   "right":  RIGHT_LON,
         "env":    "row",      "types":  "alerts,traffic,users",
     }
-    target_url = (
-        "https://embed.waze.com/live-map/api/georss?"
-        + urllib.parse.urlencode(waze_params)
-    )
     try:
-        resp = requests.get(
-            target_url,
+        resp = sess.get(
+            "https://embed.waze.com/live-map/api/georss",
+            params=waze_params,
             headers={
                 "User-Agent":       random.choice(USER_AGENTS),
                 "Accept":           "application/json, text/javascript, */*; q=0.01",
@@ -126,9 +114,9 @@ def fetch_waze_via_scraperapi():
                 print(f"  ScraperAPI OK: {len(alertas)} alertas brutos")
                 return alertas
             except Exception:
-                print(f"  ScraperAPI sem JSON: {resp.text[:150]}")
+                print(f"  ScraperAPI sem JSON: {resp.text[:200]}")
         else:
-            print(f"  ScraperAPI erro: {resp.text[:120]}")
+            print(f"  ScraperAPI resp: {resp.text[:200]}")
     except Exception as e:
         print(f"  ScraperAPI erro: {type(e).__name__}: {e}")
 
@@ -154,14 +142,25 @@ def fetch_waze_direct():
     ]
     session = requests.Session()
     try:
-        session.get("https://embed.waze.com/", headers=get_headers(), timeout=15)
+        session.get("https://embed.waze.com/", headers={
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "text/html,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+        }, timeout=15)
         time.sleep(random.uniform(0.5, 1.5))
     except Exception:
         pass
 
     for endpoint in endpoints:
         try:
-            resp = session.get(endpoint, params=params, headers=get_headers(), timeout=30)
+            resp = session.get(endpoint, params=params, headers={
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+                "Referer": "https://embed.waze.com/",
+                "Origin": "https://embed.waze.com",
+                "Cache-Control": "no-cache",
+            }, timeout=30)
             if resp.status_code == 200:
                 try:
                     data = resp.json()
