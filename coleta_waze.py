@@ -16,8 +16,8 @@ SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
 ARQUIVO_SAIDA   = os.path.join(SCRIPT_DIR, "dados", "alertas_waze.csv")
 SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "")
 
-# ── Bounding Box: Av. dos Estados (Ligação Leste-Oeste → Anhaia Mello) ──
-BOTTOM_LAT = -23.5700
+# ── Bounding Box ampliado: Av. dos Estados + Juntas Provisórias / Dom Lucas Obes ──
+BOTTOM_LAT = -23.6050
 TOP_LAT    = -23.5450
 LEFT_LON   = -46.6300
 RIGHT_LON  = -46.5950
