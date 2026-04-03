@@ -12,7 +12,7 @@ on:
 
 jobs:
   coletar:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 
@@ -20,28 +20,17 @@ jobs:
       - name: Checkout repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Instalar dependências
         run: pip install requests pandas
 
       - name: Executar coleta
-        env:
-          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: python coleta_waze.py
 
       - name: Commit dados
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add dados/
-          # Só faz o commit se houver mudanças reais
-          git diff --staged --quiet || git commit -m "coleta $(date -u +'%Y-%m-%d %H:%M UTC')"
-          
-          # A MÁGICA ESTÁ AQUI: Puxa as novidades e coloca o seu novo dado no topo
-          git pull --rebase origin main
-
+          git pull origin main
+          git add dados/alertas_waze.csv || true
+          git diff --staged --quiet || git commit -m "dados: coleta automatica"
           git push
