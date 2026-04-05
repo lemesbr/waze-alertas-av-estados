@@ -2,35 +2,43 @@ name: Coleta Waze - Av. dos Estados
 
 on:
   schedule:
-    # A cada 5 min, das 22h às 03h UTC (19h-00h Brasília), seg a sex
+    # A cada 5 min, das 22h-00h UTC (19h-21h BRT), seg a sex
     - cron: '*/5 22-23 * * 1-5'
     - cron: '*/5 0-3 * * 2-6'
-    # Fim de semana também
+    # Fim de semana tambem
     - cron: '*/5 22-23 * * 0,6'
     - cron: '*/5 0-3 * * 0,6'
   workflow_dispatch:  # Rodar manualmente
 
 jobs:
   coletar:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest  # Funciona em cloud via RapidAPI (sem WAF)
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repositório
+      - name: Checkout repositorio
         uses: actions/checkout@v4
 
-      - name: Instalar dependências
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
         run: pip install requests pandas
 
       - name: Executar coleta
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: python coleta_waze.py
 
       - name: Commit dados
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull origin main
-          git add dados/alertas_waze.csv || true
-          git diff --staged --quiet || git commit -m "dados: coleta automatica"
+          git add dados/alertas_waze.csv dados/log_coletas.csv || true
+          git diff --staged --quiet || git commit -m "coleta $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
