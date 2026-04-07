@@ -1,3 +1,4 @@
 ﻿coleta_utc,coleta_brt,metodo,api_ok,alertas_brutos,alertas_relevantes,alertas_novos,usuarios_ativos,engarrafamentos,diagnostico
 2026-04-07 02:57:33,2026-04-06 23:57:33,rapidapi,True,30,24,24,0,11,com_incidentes
 2026-04-07 05:20:24,2026-04-07 02:20:24,rapidapi,True,29,25,6,0,4,com_incidentes
+2026-04-07 06:50:02,2026-04-07 03:50:02,rapidapi,True,29,25,2,0,4,com_incidentes
