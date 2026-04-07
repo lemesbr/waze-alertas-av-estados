@@ -69,17 +69,11 @@ def fetch_waze_via_rapidapi():
         resp = requests.get(url, headers=headers, params=params, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            alertas         = data.get("alerts", [])
-            engarrafamentos = data.get("jams", [])
-            usuarios = data.get("usersCount", 0) or len(data.get("users", []))
-            print(f"  RapidAPI OK -> alertas={len(alertas)} | jams={len(engarrafamentos)} | usuarios={usuarios}")
-
-            # DEBUG TEMPORARIO - ver resposta bruta da API
-            print(f"  DEBUG keys: {list(data.keys())}")
-            if alertas:
-                print(f"  DEBUG alerta[0]: {alertas[0]}")
-            else:
-                print(f"  DEBUG resposta completa: {str(data)[:800]}")
+            # A RapidAPI encapsula os dados em data["data"]
+            payload         = data.get("data", data)
+            alertas         = payload.get("alerts", [])
+            engarrafamentos = payload.get("jams", [])
+            usuarios = payload.get("usersCount", 0) or len(payload.get("users", []))
             if len(alertas) == 0:
                 if usuarios > 0 or len(engarrafamentos) > 0:
                     print("  OK: Zero alertas confirmado (area ativa, sem incidentes)")
