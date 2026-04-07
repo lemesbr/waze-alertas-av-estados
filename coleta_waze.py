@@ -194,6 +194,8 @@ def processar_alertas(alertas_brutos):
         resultados.append({
             "alert_id":       str(a.get("uuid", a.get("id", a.get("alert_id", "")))),
             "coleta_utc":     agora_utc.strftime("%Y-%m-%d %H:%M:%S"),
+            "emissao_utc":    (lambda ms: datetime.utcfromtimestamp(ms/1000).strftime("%Y-%m-%d %H:%M:%S") if ms else "")(a.get("pubMillis", 0)),
+            "emissao_brt":    (lambda ms: (datetime.utcfromtimestamp(ms/1000) - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S") if ms else "")(a.get("pubMillis", 0)),
             "data":           agora_brt.strftime("%Y-%m-%d"),
             "hora_utc":       agora_utc.strftime("%H:%M"),
             "hora_brt":       agora_brt.strftime("%H:%M"),
