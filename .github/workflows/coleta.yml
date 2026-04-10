@@ -1,9 +1,6 @@
 name: Coleta Waze - Av. dos Estados
 
 on:
-  schedule:
-    # A cada 15 min, 24h por dia (coleta intensiva 24h)
-    - cron: '*/15 * * * *'
   workflow_dispatch:  # Rodar manualmente
 
 jobs:
